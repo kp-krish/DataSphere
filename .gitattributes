@@ -1,0 +1,8 @@
+# Normalise to LF everywhere. Files in this repo are read by Linux containers
+# (Dockerfiles, shell entrypoints, nginx config), where CRLF breaks scripts.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+package-lock.json linguist-generated=true -diff

@@ -1,0 +1,25 @@
+{
+  "name": "@datasphere/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Operational scripts: star-schema seeding and the benchmark harness",
+  "scripts": {
+    "seed": "tsx --env-file-if-exists=../.env seed.ts",
+    "benchmark": "tsx --env-file-if-exists=../.env benchmark.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@datasphere/core": "*",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "pg-copy-streams": "^6.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "@types/pg": "^8.11.10",
+    "@types/pg-copy-streams": "^1.2.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

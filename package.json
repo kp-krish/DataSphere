@@ -1,0 +1,42 @@
+{
+  "name": "datasphere",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DataSphere — a cloud data visualization platform with a dynamic SQL query engine",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "npm run build -w @datasphere/core && npm run build -w @datasphere/api && npm run build -w @datasphere/web",
+    "dev": "npm run dev -w @datasphere/api & npm run dev -w @datasphere/web",
+    "dev:api": "npm run dev -w @datasphere/api",
+    "dev:web": "npm run dev -w @datasphere/web",
+    "migrate": "npm run migrate -w @datasphere/api",
+    "migrate:down": "npm run migrate:down -w @datasphere/api",
+    "seed": "npm run seed -w @datasphere/scripts",
+    "benchmark": "npm run benchmark -w @datasphere/scripts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.6",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  }
+}

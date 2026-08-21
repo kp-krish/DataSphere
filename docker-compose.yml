@@ -1,0 +1,211 @@
+# DataSphere - full stack.
+#
+#   docker compose up --build
+#
+# Boot order is enforced with healthchecks rather than sleeps:
+#   postgres + redis  ->  init (migrate + seed)  ->  api  ->  web
+#
+# The `init` service runs to completion and exits; `api` waits for
+# service_completed_successfully, so the API never starts against an
+# unmigrated or unseeded database.
+#
+# First boot generates ~2M fact rows and takes a few minutes. Set
+# SEED_FACT_ROWS to something smaller (e.g. 100000) for a quick smoke test.
+
+name: datasphere
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL
+  #
+  # The -c flags are the configuration the benchmark numbers were measured
+  # under. Pinning them here means BENCHMARKS.md describes a reproducible
+  # setup rather than "whatever the default happened to be".
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: datasphere-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-datasphere}
+      POSTGRES_USER: ${POSTGRES_USER:-datasphere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datasphere_dev_pw}
+      # Marginally faster initdb; irrelevant to query performance.
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    command:
+      - postgres
+      # Working memory for the buffer cache. 512MB comfortably holds the
+      # dimension tables and the hot part of the fact table's indexes.
+      - -c
+      - shared_buffers=512MB
+      # Tells the planner how much RAM the OS page cache is likely to have.
+      # Too low and it refuses index scans it should choose.
+      - -c
+      - effective_cache_size=1536MB
+      # Per-sort/hash-node memory. Dashboard aggregations hash-group large
+      # inputs; 32MB keeps most of them from spilling to disk.
+      - -c
+      - work_mem=32MB
+      # Used by CREATE INDEX and VACUUM. Building indexes over 2M rows is
+      # dramatically faster with room to sort in memory.
+      - -c
+      - maintenance_work_mem=256MB
+      # Bulk COPY of 2M rows generates a lot of WAL; a small max_wal_size
+      # forces constant checkpoints and dominates seed time.
+      - -c
+      - max_wal_size=4GB
+      # SSD-appropriate. The default of 4.0 assumes spinning rust and biases
+      # the planner towards sequential scans even when an index is better.
+      - -c
+      - random_page_cost=1.1
+      # Makes EXPLAIN (ANALYZE, BUFFERS) report real I/O timings, which is how
+      # the index work in BENCHMARKS.md is justified.
+      - -c
+      - track_io_timing=on
+      # JIT compilation adds tens of milliseconds of nondeterministic overhead
+      # at this scale. We are measuring the effect of indexes and caching, so
+      # the JIT is switched off to keep p95 from being dominated by it.
+      - -c
+      - jit=off
+      - -c
+      - max_connections=100
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-datasphere} -d ${POSTGRES_DB:-datasphere}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Redis - query result cache
+  #
+  # allkeys-lru with a hard maxmemory: this is a cache, so evicting cold query
+  # results under pressure is correct behaviour, not data loss. Persistence is
+  # off for the same reason - a cold start should simply repopulate.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: datasphere-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ''
+      - --appendonly
+      - 'no'
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # init - one-shot migrate + seed, then exits
+  # ---------------------------------------------------------------------------
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.tools
+    container_name: datasphere-init
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-datasphere}:${POSTGRES_PASSWORD:-datasphere_dev_pw}@postgres:5432/${POSTGRES_DB:-datasphere}
+      REDIS_URL: redis://redis:6379
+      SEED_FACT_ROWS: ${SEED_FACT_ROWS:-2000000}
+      SEED_CUSTOMERS: ${SEED_CUSTOMERS:-50000}
+      SEED_PRODUCTS: ${SEED_PRODUCTS:-5000}
+      SEED_STORES: ${SEED_STORES:-200}
+      SEED_DATE_START: ${SEED_DATE_START:-2021-01-01}
+      SEED_DATE_END: ${SEED_DATE_END:-2025-12-31}
+      SEED_BATCH_SIZE: ${SEED_BATCH_SIZE:-50000}
+      SEED_RANDOM_SEED: ${SEED_RANDOM_SEED:-20240617}
+    command: ['sh', '-c', 'npm run migrate -w @datasphere/api && npm run seed -w @datasphere/scripts']
+
+  # ---------------------------------------------------------------------------
+  # api - Express + TypeScript
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: datasphere-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-datasphere}:${POSTGRES_PASSWORD:-datasphere_dev_pw}@postgres:5432/${POSTGRES_DB:-datasphere}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      PG_POOL_MAX: ${PG_POOL_MAX:-10}
+      QUERY_MAX_ROWS: ${QUERY_MAX_ROWS:-10000}
+      QUERY_TIMEOUT_MS: ${QUERY_TIMEOUT_MS:-15000}
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
+      CACHE_KEY_PREFIX: ${CACHE_KEY_PREFIX:-ds:q}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # web - Vite build served by nginx, which also proxies /api to the api
+  # service so the browser talks to a single origin and CORS never applies.
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Empty = same-origin. nginx proxies /api through to the api service.
+        VITE_API_BASE_URL: ''
+    container_name: datasphere-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - '${WEB_PORT:-5173}:8080'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8080/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  postgres-data:
+    name: datasphere-postgres-data
