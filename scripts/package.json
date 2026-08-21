@@ -7,7 +7,8 @@
   "scripts": {
     "seed": "tsx --env-file-if-exists=../.env seed.ts",
     "benchmark": "tsx --env-file-if-exists=../.env benchmark.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dump:catalog": "tsx --env-file-if-exists=../.env dump-catalog.ts"
   },
   "dependencies": {
     "@datasphere/core": "*",

@@ -76,6 +76,8 @@ export interface CatalogDataset {
 }
 
 export interface Catalog {
+  /** The single Postgres schema this catalog was introspected from. */
+  schema: string;
   datasets: CatalogDataset[];
   tables: CatalogTable[];
   /** ISO timestamp of when this catalog was introspected. */
@@ -163,11 +165,18 @@ export interface QuerySpec {
 /* Compiled output and execution results                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A value bound to a placeholder. Arrays are used for `in`/`not_in`, which
+ * compile to `= ANY($n)` - one placeholder regardless of how many operands the
+ * client supplied.
+ */
+export type BoundValue = FilterValue | FilterValue[];
+
 export interface CompiledQuery {
   /** Parameterised SQL. Contains only numbered placeholders for user values. */
   text: string;
   /** Values bound to the placeholders, in order. */
-  values: FilterValue[];
+  values: BoundValue[];
   /** Output column names in select order. */
   columns: string[];
   /** The effective LIMIT after clamping. */

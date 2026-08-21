@@ -27,7 +27,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dump:catalog": "npm run dump:catalog -w @datasphere/scripts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
