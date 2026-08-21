@@ -6,7 +6,7 @@
  * straight to Supertest without binding a port.
  */
 
-import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 // Named export: pino-http is a CommonJS package shipping ESM-syntax types,
@@ -14,7 +14,11 @@ import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
+import { errorHandler, notFoundHandler } from './http/errors.js';
 import { healthRouter } from './routes/health.js';
+import { catalogRouter } from './routes/catalog.js';
+import { queryRouter } from './routes/query.js';
+import { dashboardsRouter, widgetsRouter } from './routes/dashboards.js';
 
 export function createApp(): Express {
   const app = express();
@@ -24,7 +28,10 @@ export function createApp(): Express {
   // Advertising the framework and version invites targeted probing.
   app.disable('x-powered-by');
 
-  app.use(helmet());
+  // This service returns JSON and never a document, so the headers that earn
+  // their keep are the sniffing and framing ones. CSP is disabled here and set
+  // by the web container, which is what actually serves HTML.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(
     cors({
@@ -53,7 +60,9 @@ export function createApp(): Express {
     }),
   );
 
-  // Mounted twice, deliberately.
+  /* ---- routes ------------------------------------------------------------ */
+
+  // Health is mounted twice, deliberately.
   //
   // At the root for infrastructure: the container HEALTHCHECK and any
   // orchestrator probe hit /health and /ready directly on the API port.
@@ -64,33 +73,20 @@ export function createApp(): Express {
   app.use(healthRouter);
   app.use('/api', healthRouter);
 
-  // 404 for anything unmatched, in the same JSON shape as real errors so
+  app.use('/api', catalogRouter);
+  app.use('/api', queryRouter);
+  app.use('/api', dashboardsRouter);
+  app.use('/api', widgetsRouter);
+
+  /* ---- fallbacks --------------------------------------------------------- */
+
+  // 404 for anything unmatched, in the same JSON envelope as real errors so
   // clients only need one error parser.
-  app.use((req, res) => {
-    res.status(404).json({
-      error: { code: 'not_found', message: `No route for ${req.method} ${req.path}` },
-    });
-  });
+  app.use(notFoundHandler);
 
-  // Express 5 forwards rejected async handlers here automatically.
-  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
-    req.log?.error({ err }, 'Unhandled request error');
-
-    if (res.headersSent) return;
-
-    // Never leak an internal message or stack to the client in production; the
-    // log above retains the detail for whoever has to debug it.
-    res.status(500).json({
-      error: {
-        code: 'internal_error',
-        message: env.isProduction
-          ? 'An unexpected error occurred.'
-          : err instanceof Error
-            ? err.message
-            : String(err),
-      },
-    });
-  });
+  // Express 5 forwards rejected async handlers here automatically, so route
+  // code needs no try/catch wrapper. Must be registered last.
+  app.use(errorHandler);
 
   return app;
 }

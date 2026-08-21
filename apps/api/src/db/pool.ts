@@ -67,6 +67,29 @@ export async function withStatementTimeout<T>(
   }
 }
 
+/**
+ * Run `fn` inside a transaction, committing on success and rolling back on
+ * any throw.
+ *
+ * Used by the multi-statement writes - reordering widgets, deleting a
+ * dashboard and its widgets - where a partial application would leave the
+ * data in a state no request could have produced.
+ */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** True when the database answers a trivial query. Used by /health. */
 export async function pingDatabase(): Promise<boolean> {
   try {

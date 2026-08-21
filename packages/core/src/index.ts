@@ -7,5 +7,7 @@ export * from './catalog/rules.js';
 export * from './catalog/lookup.js';
 export * from './catalog/introspect.js';
 
+export * from './cache/key.js';
+
 export * from './compiler/values.js';
 export * from './compiler/compile.js';

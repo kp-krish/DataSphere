@@ -59,6 +59,17 @@ const envSchema = z.object({
   QUERY_MAX_ROWS: positiveInt(10_000, { min: 1, max: 1_000_000 }),
   /** Applied as a Postgres statement_timeout on every analytical query. */
   QUERY_TIMEOUT_MS: positiveInt(15_000, { min: 100 }),
+  /** Rows returned when a spec does not name its own limit. */
+  QUERY_DEFAULT_LIMIT: positiveInt(1_000, { min: 1 }),
+
+  /**
+   * The one schema the query engine may reach. Catalog introspection reads
+   * this and nothing else, which is what keeps application tables
+   * structurally unreachable from a user-composed query.
+   */
+  ANALYTICS_SCHEMA: z.string().min(1).default('analytics'),
+  /** How long an introspected catalog is reused before being re-read. */
+  CATALOG_TTL_SECONDS: positiveInt(300, { min: 1 }),
 
   CACHE_ENABLED: booleanish(true),
   CACHE_TTL_SECONDS: positiveInt(300, { min: 1 }),
