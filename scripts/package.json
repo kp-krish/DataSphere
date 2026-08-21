@@ -11,15 +11,15 @@
   },
   "dependencies": {
     "@datasphere/core": "*",
-    "ioredis": "^5.4.2",
-    "pg": "^8.13.1",
-    "pg-copy-streams": "^6.0.6"
+    "ioredis": "^5.9.0",
+    "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.6",
-    "@types/pg": "^8.11.10",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
     "@types/pg-copy-streams": "^1.2.5",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "tsx": "^4.21.1",
+    "typescript": "^5.9.3"
   }
 }

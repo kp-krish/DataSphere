@@ -135,7 +135,8 @@ services:
       SEED_DATE_END: ${SEED_DATE_END:-2025-12-31}
       SEED_BATCH_SIZE: ${SEED_BATCH_SIZE:-50000}
       SEED_RANDOM_SEED: ${SEED_RANDOM_SEED:-20240617}
-    command: ['sh', '-c', 'npm run migrate -w @datasphere/api && npm run seed -w @datasphere/scripts']
+    command:
+      ['sh', '-c', 'npm run migrate -w @datasphere/api && npm run seed -w @datasphere/scripts']
 
   # ---------------------------------------------------------------------------
   # api - Express + TypeScript

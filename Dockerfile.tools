@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+#
+# DataSphere ops toolbox.
+#
+# Runs the things that operate *on* the stack rather than being part of it:
+# migrations, seeding, and the benchmark harness. The compose `init` service
+# uses this image to migrate and seed before the API is allowed to start.
+#
+# Unlike the API image this one intentionally keeps devDependencies, because
+# it executes TypeScript directly through tsx. That is the right trade for a
+# short-lived task container: no build step to keep in sync, and the scripts
+# stay readable in the image if you need to exec in and poke at something.
+
+FROM node:24-alpine
+WORKDIR /app
+
+# Manifests first so the dependency install layer caches independently of
+# script edits.
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY scripts/package.json ./scripts/
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --workspaces --include-workspace-root
+
+COPY tsconfig.base.json ./
+COPY packages/core ./packages/core
+COPY scripts ./scripts
+# Only the migration machinery is needed from the API workspace, not its source.
+COPY apps/api/migrations ./apps/api/migrations
+COPY apps/api/scripts ./apps/api/scripts
+COPY apps/api/tsconfig.json ./apps/api/
+
+# @datasphere/core is imported by the scripts, so it has to be compiled.
+RUN npm run build -w @datasphere/core
+
+USER node
+
+# Overridden by compose, which chains migrate and seed. Running the image with
+# no arguments applies migrations, which is the safe default.
+CMD ["npm", "run", "migrate", "-w", "@datasphere/api"]
