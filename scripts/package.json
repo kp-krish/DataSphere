@@ -8,7 +8,9 @@
     "seed": "tsx --env-file-if-exists=../.env seed.ts",
     "benchmark": "tsx --env-file-if-exists=../.env benchmark.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dump:catalog": "tsx --env-file-if-exists=../.env dump-catalog.ts"
+    "dump:catalog": "tsx --env-file-if-exists=../.env dump-catalog.ts",
+    "seed:dashboards": "tsx --env-file-if-exists=../.env seed-dashboards.ts",
+    "screenshot": "tsx --env-file-if-exists=../.env screenshot.ts"
   },
   "dependencies": {
     "@datasphere/core": "*",
@@ -21,6 +23,7 @@
     "@types/pg": "^8.15.6",
     "@types/pg-copy-streams": "^1.2.5",
     "tsx": "^4.21.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "playwright-core": "^1.62.1"
   }
 }

@@ -1,117 +1,889 @@
-/* Phase 1 baseline styling. The real design system lands with the UI in phase 5. */
+/**
+ * DataSphere design tokens and layout.
+ *
+ * The dark theme is *selected*, not an inverted light theme: every chart
+ * colour is a step chosen for this surface and validated against it (see
+ * lib/palette.ts). Analytics tools are read for long stretches in dim rooms,
+ * so dark is the deliberate default rather than a preference toggle.
+ *
+ * Chart chrome deliberately recedes. Gridlines sit one step off the surface,
+ * axes are hairlines, and text never wears a data colour - a coloured mark
+ * beside a label carries identity, the label itself stays ink.
+ */
 
 :root {
-  --bg: #0f1117;
-  --surface: #171a23;
-  --border: #262b38;
-  --text: #e6e8ee;
-  --muted: #8b93a7;
-  --accent: #5b8def;
-  --ok: #3fb950;
-  --bad: #f85149;
-
   color-scheme: dark;
+
+  /* --- surfaces ---------------------------------------------------------- */
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #232321;
+  --surface-hover: #2c2c2a;
+
+  /* --- ink --------------------------------------------------------------- */
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+
+  /* --- lines ------------------------------------------------------------- */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: #383835;
+  --grid: #2c2c2a;
+
+  /* --- accents ----------------------------------------------------------- */
+  --accent: #3987e5;
+  --accent-hover: #5598e7;
+  --accent-ink: #ffffff;
+
+  /* --- status (fixed; never reused for a series) ------------------------- */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  /* --- geometry ---------------------------------------------------------- */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --gap: 1rem;
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.shell {
-  max-width: 780px;
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Never remove a focus ring without replacing it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ========================================================================== */
+/* Layout                                                                     */
+/* ========================================================================== */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 1.25rem;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.topbar__brand span {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.topbar__nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.topbar__link {
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.topbar__link:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.topbar__link--active {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.topbar__spacer {
+  flex: 1;
+}
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 4rem 1.5rem;
+  padding: 1.5rem 1.25rem 4rem;
 }
 
-h1 {
+.page__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.page__title {
   margin: 0;
-  font-size: 2.25rem;
+  font-size: 1.5rem;
+  font-weight: 650;
   letter-spacing: -0.02em;
 }
 
-.tagline {
-  margin: 0.5rem 0 0;
-  color: var(--muted);
+.page__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
 }
+
+.page__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* ========================================================================== */
+/* Controls                                                                   */
+/* ========================================================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--critical) 20%, var(--surface-raised));
+  border-color: var(--critical);
+}
+
+.btn--sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.field__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.input,
+.select {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  min-width: 0;
+  width: 100%;
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--border-strong);
+}
+
+.select {
+  cursor: pointer;
+}
+
+/* ========================================================================== */
+/* Cards                                                                      */
+/* ========================================================================== */
 
 .card {
-  margin-top: 2rem;
-  padding: 1.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
 }
 
-.card h2 {
-  margin: 0 0 1rem;
-  font-size: 0.8rem;
+.card__title {
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.pill {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.875rem;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.pill-state {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
-.error {
-  color: var(--bad);
+.mono {
+  font-family: var(--mono);
+  font-size: 0.8rem;
 }
 
-.phases {
+/* ========================================================================== */
+/* Messages                                                                   */
+/* ========================================================================== */
+
+.notice {
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.notice--error {
+  border-color: color-mix(in srgb, var(--critical) 50%, var(--border));
+  background: color-mix(in srgb, var(--critical) 12%, var(--surface));
+}
+
+.notice__code {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+/* ========================================================================== */
+/* Cache badge - makes the caching layer visible rather than claimed          */
+/* ========================================================================== */
+
+.cache-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cache-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.cache-badge--hit .cache-badge__dot {
+  background: var(--good);
+}
+
+.cache-badge--miss .cache-badge__dot {
+  background: var(--text-muted);
+}
+
+.cache-badge--bypass .cache-badge__dot {
+  background: var(--warning);
+}
+
+.cache-badge--disabled .cache-badge__dot {
+  background: var(--critical);
+}
+
+.cache-badge__saved {
+  color: var(--good);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========================================================================== */
+/* Widget grid                                                                */
+/* ========================================================================== */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.widget {
+  grid-column: span var(--span, 6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.widget--dragging {
+  opacity: 0.4;
+}
+
+.widget__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  min-height: 44px;
+}
+
+.widget__title {
   margin: 0;
-  padding-left: 1.25rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Take the leftover space and be the thing that shrinks, but never below a
+     readable stub - the tools are fixed-width, so without a floor the title
+     collapsed to a single character on narrow cards. */
+  flex: 1 1 auto;
+  min-width: 4.5rem;
 }
 
-.phases li {
-  margin: 0.35rem 0;
+.widget__tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  /* Chrome must not steal space from the title. */
+  flex: 0 0 auto;
 }
 
-.phases li.done {
-  color: var(--text);
+.widget__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
-.phases li.done::marker {
-  color: var(--ok);
+.widget__tool:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.widget__tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.widget__tool[aria-pressed='true'] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.widget__tool--danger:hover:not(:disabled) {
+  color: var(--critical);
+}
+
+.widget__drag {
+  cursor: grab;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  border-radius: var(--radius-sm);
+  touch-action: none;
+}
+
+.widget__drag:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.widget__drag:active {
+  cursor: grabbing;
+}
+
+.widget__body {
+  padding: 0.85rem;
+  flex: 1;
+  min-width: 0;
+  /* The container must include the x-axis band, not just the plot, or the
+     card grows a tiny nested scrollbar for the axis labels. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Refetching holds the previous render at reduced opacity. A skeleton would
+   flash and jump the layout for data that is about to look almost identical. */
+.widget__body--refetching {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+/* ========================================================================== */
+/* Charts                                                                     */
+/* ========================================================================== */
+
+.chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  padding-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.tooltip {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.tooltip__label {
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.tooltip__row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.tooltip__row + .tooltip__row {
+  margin-top: 0.2rem;
+}
+
+.tooltip__value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ========================================================================== */
+/* KPI stat tile                                                              */
+/* ========================================================================== */
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 100%;
+  padding: 0.5rem 0.25rem;
+}
+
+.kpi__label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.kpi__value {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  /* Proportional figures: tabular-nums makes a big number look loose. */
+  font-variant-numeric: proportional-nums;
+}
+
+.kpi__context {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ========================================================================== */
+/* Data table                                                                 */
+/* ========================================================================== */
+
+.table-wrap {
+  overflow: auto;
+  max-height: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.table th,
+.table td {
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  z-index: 1;
+}
+
+.table td--numeric {
+  text-align: right;
+  /* Columns of numbers must align vertically. */
+  font-variant-numeric: tabular-nums;
+}
+
+.table th--numeric {
+  text-align: right;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+/* ========================================================================== */
+/* Query builder                                                              */
+/* ========================================================================== */
+
+.builder {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .builder {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.builder__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  position: sticky;
+  top: 72px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.builder__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.spec-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  margin-bottom: 0.4rem;
+}
+
+.spec-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.spec-row__line {
+  display: flex;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.spec-row__line > * {
+  min-width: 0;
+  flex: 1;
+}
+
+.spec-row__remove {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.spec-row__remove:hover {
+  color: var(--critical);
+  background: var(--surface-hover);
+}
+
+.sql-preview {
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+.sql-preview__values {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* ========================================================================== */
+/* Dashboard list                                                             */
+/* ========================================================================== */
+
+.dash-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--gap);
+}
+
+.dash-card {
+  display: block;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 120ms ease;
+}
+
+.dash-card:hover {
+  border-color: var(--border-strong);
+}
+
+.dash-card__name {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.dash-card__meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ========================================================================== */
+/* Live indicator                                                             */
+/* ========================================================================== */
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.live__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.live--connected .live__dot {
+  background: var(--good);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live--connected .live__dot {
+    animation: live-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ========================================================================== */
+/* Modal                                                                      */
+/* ========================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  width: min(480px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal__title {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }

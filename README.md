@@ -5,9 +5,9 @@ UI — no SQL — and DataSphere compiles that JSON spec into parameterised SQL,
 runs it against a 2-million-row PostgreSQL star schema, caches the result in
 Redis, and renders it as live dashboard widgets.
 
-> **Status: phases 1–4 of 7 complete.** The infrastructure, query engine, REST
-> API and caching layer are done and verified. The frontend, index/benchmark
-> work and CI remain — see [Roadmap](#roadmap).
+> **Status: phases 1–5 of 7 complete.** The stack runs end to end: build a query
+> in the UI, save it as a widget, and watch it update live when the data
+> changes. Index/benchmark work and CI remain — see [Roadmap](#roadmap).
 
 ---
 
@@ -184,6 +184,43 @@ pretending the cache was consulted.
 
 ---
 
+## Frontend
+
+React + Vite + TypeScript, Recharts for charts, TanStack Query for server
+state, dnd-kit for reordering.
+
+**The chart palette was computed, not chosen.** Eight hues in a fixed order,
+validated against this app's dark surface with a colour-vision checker:
+
+| Check                                          | Result                                          |
+| ---------------------------------------------- | ----------------------------------------------- |
+| Adjacent pairs, all 8 slots (bar, line, stack) | worst CVD ΔE **8.6**, normal-vision ΔE **19.3** |
+| All pairs, first 4 slots (pie)                 | worst CVD ΔE 6.9, normal-vision ΔE **19.3**     |
+| Contrast against the surface                   | all 8 slots ≥ 3:1                               |
+
+The obvious default ordering was unusable: it places yellow beside orange,
+which measures normal-vision ΔE 10.6 when every slice is compared with every
+other — below the floor of 15, meaning readers with full colour vision cannot
+reliably tell two pie slices apart. The order here was found by validating
+candidate orderings and keeping only ones that pass. Pie slices are
+direct-labelled because the first four slots land in the band where colour
+needs a second channel.
+
+Other rules the UI holds to:
+
+- **Text never wears a data colour.** A coloured swatch beside a label carries
+  identity; the label stays ink.
+- **Every chart has a table view** — the accessible twin, reachable from the
+  widget header, so no value is locked behind colour or hover.
+- **Refetch holds the previous render** at reduced opacity rather than flashing
+  a skeleton and jumping the layout.
+- **Reordering works from the keyboard** (dnd-kit's keyboard sensor), and is
+  optimistic with a rollback if the server rejects it.
+- Bars cap at 24px, lines are 2px, markers carry a 2px surface ring, and
+  gridlines are solid hairlines one step off the surface.
+
+---
+
 ## Repository layout
 
 ```
@@ -220,13 +257,29 @@ its values are throwaway local-container credentials.
 - [x] **2** — Schema catalog + query compiler + injection tests
 - [x] **3** — REST API: catalog, query execution, dashboard/widget CRUD
 - [x] **4** — Redis caching, invalidation, hit/miss reporting
-- [ ] **5** — Query builder UI, dashboard grid, all widget types
+- [x] **5** — Query builder UI, dashboard grid, all widget types
 - [ ] **6** — Indexes, benchmark harness, `BENCHMARKS.md`
 - [ ] **7** — CI, docs, polish
 
 ## Screenshots
 
-_Added in phase 5, once the dashboard UI exists._
+Regenerate with `npm run screenshot` against a running stack.
+
+### Dashboard
+
+Every widget type on one board — KPI tiles, a bucketed time series, a pie, a
+grouped bar, a multi-series bar and a data table. Each card reports its own
+cache status and what the cache saved.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Query builder
+
+Pick a dataset, dimensions, measures, filters and sort. The generated SQL is
+compiled **by the server** and shown live, with the bound values listed
+separately — so it is visible that no value is ever in the SQL text.
+
+![Query builder](docs/screenshots/query-builder.png)
 
 ## Benchmarks
 

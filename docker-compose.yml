@@ -112,7 +112,11 @@ services:
       start_period: 5s
 
   # ---------------------------------------------------------------------------
-  # init - one-shot migrate + seed, then exits
+  # init - one-shot migrate + seed + demo dashboard, then exits
+  #
+  # The demo dashboard is part of the boot so a clean `docker compose up` lands
+  # on a populated board rather than an empty state. All three steps are
+  # idempotent, so a restart against an existing volume is a no-op.
   # ---------------------------------------------------------------------------
   init:
     build:
@@ -136,7 +140,11 @@ services:
       SEED_BATCH_SIZE: ${SEED_BATCH_SIZE:-50000}
       SEED_RANDOM_SEED: ${SEED_RANDOM_SEED:-20240617}
     command:
-      ['sh', '-c', 'npm run migrate -w @datasphere/api && npm run seed -w @datasphere/scripts']
+      [
+        'sh',
+        '-c',
+        'npm run migrate -w @datasphere/api && npm run seed -w @datasphere/scripts && npm run seed:dashboards -w @datasphere/scripts',
+      ]
 
   # ---------------------------------------------------------------------------
   # api - Express + TypeScript

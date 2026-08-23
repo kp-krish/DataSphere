@@ -1,12 +1,18 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.js';
 import './styles.css';
 
-// One client for the app. Defaults are tuned for dashboard data: results are
-// aggregates over a warehouse, so refetching on every window focus is wasted
-// work, and a short stale window is plenty.
+/**
+ * One client for the app.
+ *
+ * Defaults are tuned for warehouse aggregates: results change when the data
+ * changes, and the server says so over SSE, so refetching on every window
+ * focus is wasted work. `staleTime` is short rather than zero so remounting a
+ * dashboard does not re-run every widget.
+ */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,7 +31,9 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
 );
