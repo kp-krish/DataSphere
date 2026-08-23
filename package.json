@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "DataSphere — a cloud data visualization platform with a dynamic SQL query engine",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },

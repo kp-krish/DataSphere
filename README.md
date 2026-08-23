@@ -565,3 +565,9 @@ Two findings worth the read:
 
 Indexes cost 254 MB against a 206 MB heap — larger than the data. The seed
 drops and rebuilds them around the bulk load for that reason.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
