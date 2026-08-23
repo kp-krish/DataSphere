@@ -488,6 +488,48 @@ const FACT_FOREIGN_KEYS = [
   ['fact_orders_store_fk', 'store_id', 'dim_store', 'store_id'],
 ] as const;
 
+/**
+ * Analytical indexes on the fact table, dropped for the bulk load and rebuilt
+ * afterwards.
+ *
+ * Same reasoning as the foreign keys. Every COPY'd row would otherwise have to
+ * be inserted into five B-trees one at a time, in whatever random order the
+ * rows arrive; building each index once at the end sorts the whole column and
+ * writes it sequentially, which is dramatically cheaper.
+ *
+ * The definitions are read from the database rather than written here, so the
+ * seed restores exactly what the migration created and cannot drift from it.
+ * The primary key is excluded - it enforces a constraint, not a query plan.
+ */
+interface SavedIndex {
+  name: string;
+  definition: string;
+}
+
+async function readFactIndexes(client: Client): Promise<SavedIndex[]> {
+  const { rows } = await client.query<SavedIndex>(
+    `SELECT indexname AS name, indexdef AS definition
+       FROM pg_indexes
+      WHERE schemaname = 'analytics'
+        AND tablename = 'fact_orders'
+        AND indexname <> 'fact_orders_pkey'
+      ORDER BY indexname`,
+  );
+  return rows;
+}
+
+async function dropFactIndexes(client: Client, indexes: SavedIndex[]): Promise<void> {
+  for (const index of indexes) {
+    await client.query(`DROP INDEX IF EXISTS analytics.${index.name}`);
+  }
+}
+
+async function restoreFactIndexes(client: Client, indexes: SavedIndex[]): Promise<void> {
+  for (const index of indexes) {
+    await client.query(index.definition);
+  }
+}
+
 async function dropFactForeignKeys(client: Client): Promise<void> {
   for (const [name] of FACT_FOREIGN_KEYS) {
     await client.query(`ALTER TABLE analytics.fact_orders DROP CONSTRAINT IF EXISTS ${name}`);
@@ -629,8 +671,16 @@ async function seed(config: SeedConfig): Promise<void> {
     console.log(`      done in ${formatDuration(Date.now() - dimStart)}`);
 
     // ---- load facts -------------------------------------------------------
-    console.log('[4/6] Loading fact_orders (foreign keys dropped for the load)...');
+    console.log('[4/6] Loading fact_orders (constraints and indexes dropped for the load)...');
     await dropFactForeignKeys(client);
+
+    // Read them before dropping, so whatever the migration created is exactly
+    // what comes back.
+    const factIndexes = await readFactIndexes(client);
+    if (factIndexes.length > 0) {
+      console.log(`      dropping ${factIndexes.length} analytical index(es) for the load`);
+      await dropFactIndexes(client, factIndexes);
+    }
 
     const factStart = Date.now();
 
@@ -673,7 +723,7 @@ async function seed(config: SeedConfig): Promise<void> {
     );
 
     // ---- restore constraints ----------------------------------------------
-    console.log('[5/6] Restoring foreign keys and resetting the identity sequence...');
+    console.log('[5/6] Rebuilding indexes, restoring foreign keys, resetting the sequence...');
     const fkStart = Date.now();
 
     // ANALYZE *before* re-adding the foreign keys, not after. Re-adding a FK
@@ -687,6 +737,15 @@ async function seed(config: SeedConfig): Promise<void> {
     await client.query('ANALYZE analytics.fact_orders');
 
     await restoreFactForeignKeys(client);
+
+    // Built once over the finished table rather than maintained row by row.
+    if (factIndexes.length > 0) {
+      const indexStart = Date.now();
+      await restoreFactIndexes(client, factIndexes);
+      console.log(
+        `      rebuilt ${factIndexes.length} index(es) in ${formatDuration(Date.now() - indexStart)}`,
+      );
+    }
     // order_id values were supplied explicitly, so the identity sequence is
     // still at 1. Without this, the first API-side insert collides.
     await client.query(

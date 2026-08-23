@@ -5,9 +5,9 @@ UI — no SQL — and DataSphere compiles that JSON spec into parameterised SQL,
 runs it against a 2-million-row PostgreSQL star schema, caches the result in
 Redis, and renders it as live dashboard widgets.
 
-> **Status: phases 1–5 of 7 complete.** The stack runs end to end: build a query
-> in the UI, save it as a widget, and watch it update live when the data
-> changes. Index/benchmark work and CI remain — see [Roadmap](#roadmap).
+> **Status: phases 1–6 of 7 complete.** The stack runs end to end, and the
+> performance work is measured rather than asserted — see
+> [BENCHMARKS.md](BENCHMARKS.md). CI and final docs remain.
 
 ---
 
@@ -258,7 +258,7 @@ its values are throwaway local-container credentials.
 - [x] **3** — REST API: catalog, query execution, dashboard/widget CRUD
 - [x] **4** — Redis caching, invalidation, hit/miss reporting
 - [x] **5** — Query builder UI, dashboard grid, all widget types
-- [ ] **6** — Indexes, benchmark harness, `BENCHMARKS.md`
+- [x] **6** — Indexes, benchmark harness, `BENCHMARKS.md`
 - [ ] **7** — CI, docs, polish
 
 ## Screenshots
@@ -283,6 +283,44 @@ separately — so it is visible that no value is ever in the SQL text.
 
 ## Benchmarks
 
-_Added in phase 6. Numbers will be whatever the runs actually produce, measured
-on stated hardware under the Postgres configuration pinned in
-`docker-compose.yml`._
+Full detail, method and caveats in **[BENCHMARKS.md](BENCHMARKS.md)** — every
+number there is produced by `npm run benchmark`, which runs a ten-query suite
+under four configurations and rewrites the file.
+
+Median across the suite, end to end over HTTP against 2M rows:
+
+| Configuration      |        p50 |        p95 |
+| ------------------ | ---------: | ---------: |
+| No index, no cache |   136.6 ms |   180.1 ms |
+| Cache only         |     3.5 ms |     4.4 ms |
+| Index only         |   135.2 ms |   144.6 ms |
+| **Index + cache**  | **3.0 ms** | **3.9 ms** |
+
+**The median hides the interesting half.** The suite is deliberately weighted
+towards whole-table aggregation, which no index can accelerate — so the "index
+only" median barely moves while individual queries improve up to 8.4×:
+
+| Query                             | No index | With index | Change |
+| --------------------------------- | -------: | ---------: | ------ |
+| Revenue by day, one week          |  68.0 ms |     8.1 ms | −88%   |
+| Revenue for one month             |  63.8 ms |     9.8 ms | −85%   |
+| Distinct customers (KPI)          | 526.6 ms |   137.1 ms | −74%   |
+| Revenue by category for one store |  66.9 ms |    18.3 ms | −73%   |
+| Revenue by segment and region     | 457.9 ms |   460.8 ms | +1%    |
+
+The last row is not a failure — it is the honest shape of the result. A query
+that must read `revenue` for every row cannot be served from an index, and a
+parallel sequential scan is already its optimal plan.
+
+Two findings worth the read:
+
+- **`COUNT(DISTINCT customer_id)` improved 3.8× despite reading every row.** It
+  needs one 4-byte column, and the index is a narrow copy of that column — 1,775
+  buffers instead of ~26,000. "Full scan" does not mean "cannot be helped"; what
+  matters is how many _bytes_ move.
+- **Cache and indexes are not alternatives.** On a hit the index is irrelevant
+  because Postgres is never consulted. The index sets the cost of a _miss_, and
+  every TTL expiry and every write to the fact table produces misses.
+
+Indexes cost 254 MB against a 206 MB heap — larger than the data. The seed
+drops and rebuilds them around the bulk load for that reason.
