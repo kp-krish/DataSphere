@@ -409,6 +409,10 @@ textarea {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  /* A widget's header has to lay itself out against the width of the card, not
+     of the viewport: four KPI cards across a wide screen are each narrower
+     than one chart card on a phone. A media query cannot tell those apart. */
+  container-type: inline-size;
 }
 
 .widget--dragging {
@@ -445,6 +449,38 @@ textarea {
   gap: 0.15rem;
   /* Chrome must not steal space from the title. */
   flex: 0 0 auto;
+}
+
+/* A title, a status badge and three tools do not fit on one line inside a
+   quarter-width card. Something has to give, and it should not be the title:
+   "Average order value" abbreviated to "Average ..." is the one piece of text
+   on the card a reader cannot reconstruct from context. So below this width
+   the badge drops to a row of its own, where it also stops being clipped. */
+@container (max-width: 26rem) {
+  .widget__head {
+    flex-wrap: wrap;
+    row-gap: 0.3rem;
+  }
+
+  .widget__title {
+    /* No longer competing with the badge for the row, so the floor that kept
+       it readable is no longer doing any work. */
+    min-width: 0;
+  }
+
+  /* A zero-height full-width flex item, sitting between the tools and the
+     badge. It is what forces the wrap. Giving the badge `flex-basis: 100%`
+     would do the same job but would also stretch the pill across the whole
+     card, which reads as a banner rather than a status chip. */
+  .widget__head::after {
+    content: '';
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .widget__head .cache-badge {
+    order: 1;
+  }
 }
 
 .widget__tool {

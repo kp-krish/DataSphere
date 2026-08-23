@@ -15,15 +15,15 @@ configurations and writes this file. Re-running it overwrites these numbers.
 
 Median across the ten-query suite, measured end to end over HTTP:
 
-| Configuration | p50 (ms) | p95 (ms) | vs baseline |
-| ------------- | -------: | -------: | ----------- |
-| No index, no cache | 136.6 | 180.1 | — |
-| Cache only | 3.5 | 4.4 | −97.5% (39.3×) |
-| Index only | 135.2 | 144.6 | −1.0% (1.0×) |
-| Index + cache | 3.0 | 3.9 | −97.8% (45.3×) |
+| Configuration      | p50 (ms) | p95 (ms) | vs baseline    |
+| ------------------ | -------: | -------: | -------------- |
+| No index, no cache |    136.6 |    180.1 | —              |
+| Cache only         |      3.5 |      4.4 | −97.5% (39.3×) |
+| Index only         |    135.2 |    144.6 | −1.0% (1.0×)   |
+| Index + cache      |      3.0 |      3.9 | −97.8% (45.3×) |
 
 **That "index only" row understates what the indexes do.** The suite is
-deliberately weighted towards whole-table aggregation, so the *median* query in
+deliberately weighted towards whole-table aggregation, so the _median_ query in
 it is one indexes barely touch — while the best-served query in the same suite
 improves 8.4× (Revenue by day, one week). A single median cannot represent a workload that
 bimodal, which is why this report leads with the per-query split rather than an
@@ -57,18 +57,18 @@ average. The index numbers worth reading are further down.
 
 p50 in milliseconds.
 
-| Query | Shape | Baseline | Cache only | Index only | Index + cache | Best vs baseline |
-| ----- | ----- | -------: | ---------: | ---------: | ------------: | ---------------- |
-| Revenue by category | `full-scan` | 292.9 | 3.9 | 243.2 | 2.9 | −99.0% (100.3×) |
-| Top 10 subcategories by revenue | `full-scan` | 296.1 | 3.6 | 240.3 | 3.1 | −98.9% (95.0×) |
-| Revenue and profit by channel | `full-scan` | 308.1 | 3.6 | 300.5 | 3.2 | −99.0% (97.4×) |
-| Total revenue (KPI) | `full-scan` | 136.6 | 3.5 | 135.2 | 3.0 | −97.8% (46.2×) |
-| Distinct customers (KPI) | `full-scan` | 526.6 | 3.5 | 137.1 | 3.0 | −99.4% (174.4×) |
-| Revenue by segment and region | `full-scan` | 457.9 | 3.5 | 460.8 | 3.4 | −99.3% (134.9×) |
-| Revenue for one month | `selective` | 63.8 | 3.4 | 9.8 | 3.2 | −95.0% (19.9×) |
-| Revenue by day, one week | `selective` | 68.0 | 3.4 | 8.1 | 3.0 | −95.5% (22.4×) |
-| Revenue by category for one store | `selective` | 66.9 | 3.4 | 18.3 | 3.0 | −95.5% (22.4×) |
-| Revenue by month, one quarter | `selective` | 108.8 | 3.4 | 89.8 | 2.9 | −97.3% (37.0×) |
+| Query                             | Shape       | Baseline | Cache only | Index only | Index + cache | Best vs baseline |
+| --------------------------------- | ----------- | -------: | ---------: | ---------: | ------------: | ---------------- |
+| Revenue by category               | `full-scan` |    292.9 |        3.9 |      243.2 |           2.9 | −99.0% (100.3×)  |
+| Top 10 subcategories by revenue   | `full-scan` |    296.1 |        3.6 |      240.3 |           3.1 | −98.9% (95.0×)   |
+| Revenue and profit by channel     | `full-scan` |    308.1 |        3.6 |      300.5 |           3.2 | −99.0% (97.4×)   |
+| Total revenue (KPI)               | `full-scan` |    136.6 |        3.5 |      135.2 |           3.0 | −97.8% (46.2×)   |
+| Distinct customers (KPI)          | `full-scan` |    526.6 |        3.5 |      137.1 |           3.0 | −99.4% (174.4×)  |
+| Revenue by segment and region     | `full-scan` |    457.9 |        3.5 |      460.8 |           3.4 | −99.3% (134.9×)  |
+| Revenue for one month             | `selective` |     63.8 |        3.4 |        9.8 |           3.2 | −95.0% (19.9×)   |
+| Revenue by day, one week          | `selective` |     68.0 |        3.4 |        8.1 |           3.0 | −95.5% (22.4×)   |
+| Revenue by category for one store | `selective` |     66.9 |        3.4 |       18.3 |           3.0 | −95.5% (22.4×)   |
+| Revenue by month, one quarter     | `selective` |    108.8 |        3.4 |       89.8 |           2.9 | −97.3% (37.0×)   |
 
 ---
 
@@ -78,18 +78,18 @@ This is the part worth reading carefully, because the effect is not uniform —
 and a benchmark reporting only an average would hide exactly the thing that
 matters.
 
-| Query | Shape | No index (ms) | With index (ms) | Change |
-| ----- | ----- | ------------: | --------------: | ------ |
-| Revenue by category | `full-scan` | 292.9 | 243.2 | −17.0% (1.2×) |
-| Top 10 subcategories by revenue | `full-scan` | 296.1 | 240.3 | −18.9% (1.2×) |
-| Revenue and profit by channel | `full-scan` | 308.1 | 300.5 | −2.5% (1.0×) |
-| Total revenue (KPI) | `full-scan` | 136.6 | 135.2 | −1.0% (1.0×) |
-| Distinct customers (KPI) | `full-scan` | 526.6 | 137.1 | −74.0% (3.8×) |
-| Revenue by segment and region | `full-scan` | 457.9 | 460.8 | +0.6% (1.0×) |
-| Revenue for one month | `selective` | 63.8 | 9.8 | −84.7% (6.5×) |
-| Revenue by day, one week | `selective` | 68.0 | 8.1 | −88.1% (8.4×) |
-| Revenue by category for one store | `selective` | 66.9 | 18.3 | −72.6% (3.6×) |
-| Revenue by month, one quarter | `selective` | 108.8 | 89.8 | −17.4% (1.2×) |
+| Query                             | Shape       | No index (ms) | With index (ms) | Change        |
+| --------------------------------- | ----------- | ------------: | --------------: | ------------- |
+| Revenue by category               | `full-scan` |         292.9 |           243.2 | −17.0% (1.2×) |
+| Top 10 subcategories by revenue   | `full-scan` |         296.1 |           240.3 | −18.9% (1.2×) |
+| Revenue and profit by channel     | `full-scan` |         308.1 |           300.5 | −2.5% (1.0×)  |
+| Total revenue (KPI)               | `full-scan` |         136.6 |           135.2 | −1.0% (1.0×)  |
+| Distinct customers (KPI)          | `full-scan` |         526.6 |           137.1 | −74.0% (3.8×) |
+| Revenue by segment and region     | `full-scan` |         457.9 |           460.8 | +0.6% (1.0×)  |
+| Revenue for one month             | `selective` |          63.8 |             9.8 | −84.7% (6.5×) |
+| Revenue by day, one week          | `selective` |          68.0 |             8.1 | −88.1% (8.4×) |
+| Revenue by category for one store | `selective` |          66.9 |            18.3 | −72.6% (3.6×) |
+| Revenue by month, one quarter     | `selective` |         108.8 |            89.8 | −17.4% (1.2×) |
 
 Indexes alone moved 4 of the 10 queries by more than 30%: **Distinct customers (KPI)** (74%), **Revenue for one month** (85%), **Revenue by day, one week** (88%), **Revenue by category for one store** (73%). The other 6 changed by less, which at this sample size is not distinguishable from run-to-run noise.
 
@@ -118,7 +118,7 @@ touched.
 **2. Reading narrower rows.** This is the case the obvious reasoning gets
 wrong. `COUNT(DISTINCT customer_id)` must visit all two million rows, so by
 the "a full scan cannot be helped" rule an index should be useless here. It is
-not: the query needs exactly one 4-byte column, and the index *is* a narrow
+not: the query needs exactly one 4-byte column, and the index _is_ a narrow
 copy of that column, so Postgres scans it instead of the heap.
 
 ```
@@ -132,7 +132,7 @@ Aggregate
 the bytes.
 
 There is a satisfying detail here. `fact_orders_customer_id_idx` is the
-*smallest* index on the table despite indexing the column with the *most*
+_smallest_ index on the table despite indexing the column with the _most_
 distinct values, because it is the only one without `INCLUDE` columns and so
 the only one B-tree deduplication can compress. The same decision that made it
 cheap to store is what makes it fast to scan.
@@ -156,7 +156,7 @@ whole-table aggregates that indexing cannot touch.
 Notice that "index + cache" and "cache only" are almost identical. That is
 expected, and it is not evidence the indexes are redundant: **on a cache hit
 the index cannot matter, because the database is never consulted.** What the
-index determines is how expensive a cache *miss* is — and misses are not rare.
+index determines is how expensive a cache _miss_ is — and misses are not rare.
 Every entry expires on its TTL, and every write to the fact table invalidates
 the dataset outright. The cache sets the best case; the index sets the worst
 one, which is the number a user actually feels after their data changes.
@@ -164,18 +164,18 @@ one, which is the number a user actually feels after their data changes.
 The first request still pays full price. Cold versus warm, in the index + cache
 configuration:
 
-| Query | Cold (ms) | Warm p50 (ms) | Change |
-| ----- | --------: | ------------: | ------ |
-| Revenue by category | 267.9 | 2.9 | −98.9% (91.8×) |
-| Top 10 subcategories by revenue | 241.3 | 3.1 | −98.7% (77.4×) |
-| Revenue and profit by channel | 370.0 | 3.2 | −99.1% (117.0×) |
-| Total revenue (KPI) | 168.9 | 3.0 | −98.2% (57.1×) |
-| Distinct customers (KPI) | 136.1 | 3.0 | −97.8% (45.1×) |
-| Revenue by segment and region | 412.9 | 3.4 | −99.2% (121.7×) |
-| Revenue for one month | 11.4 | 3.2 | −71.8% (3.5×) |
-| Revenue by day, one week | 8.6 | 3.0 | −64.4% (2.8×) |
-| Revenue by category for one store | 19.4 | 3.0 | −84.6% (6.5×) |
-| Revenue by month, one quarter | 89.6 | 2.9 | −96.7% (30.4×) |
+| Query                             | Cold (ms) | Warm p50 (ms) | Change          |
+| --------------------------------- | --------: | ------------: | --------------- |
+| Revenue by category               |     267.9 |           2.9 | −98.9% (91.8×)  |
+| Top 10 subcategories by revenue   |     241.3 |           3.1 | −98.7% (77.4×)  |
+| Revenue and profit by channel     |     370.0 |           3.2 | −99.1% (117.0×) |
+| Total revenue (KPI)               |     168.9 |           3.0 | −98.2% (57.1×)  |
+| Distinct customers (KPI)          |     136.1 |           3.0 | −97.8% (45.1×)  |
+| Revenue by segment and region     |     412.9 |           3.4 | −99.2% (121.7×) |
+| Revenue for one month             |      11.4 |           3.2 | −71.8% (3.5×)   |
+| Revenue by day, one week          |       8.6 |           3.0 | −64.4% (2.8×)   |
+| Revenue by category for one store |      19.4 |           3.0 | −84.6% (6.5×)   |
+| Revenue by month, one quarter     |      89.6 |           2.9 | −96.7% (30.4×)  |
 
 ---
 
@@ -183,19 +183,19 @@ configuration:
 
 Indexes are not free, and on this table they are **larger than the data**:
 
-| Index | Size |
-| ----- | ---: |
-| `fact_orders_customer_id_idx` | 14 MB |
-| | <sub>`analytics.fact_orders USING btree (customer_id)`</sub> |
-| `fact_orders_date_key_idx` | 77 MB |
-| | <sub>`analytics.fact_orders USING btree (date_key) INCLUDE (revenue, cost, quantity)`</sub> |
-| `fact_orders_ordered_at_idx` | 43 MB |
-| | <sub>`analytics.fact_orders USING btree (ordered_at DESC)`</sub> |
-| `fact_orders_product_id_idx` | 60 MB |
-| | <sub>`analytics.fact_orders USING btree (product_id) INCLUDE (revenue, quantity)`</sub> |
-| `fact_orders_store_id_idx` | 60 MB |
-| | <sub>`analytics.fact_orders USING btree (store_id) INCLUDE (revenue)`</sub> |
-| **Total (excl. primary key)** | **254 MB** |
+| Index                         |                                                                                        Size |
+| ----------------------------- | ------------------------------------------------------------------------------------------: |
+| `fact_orders_customer_id_idx` |                                                                                       14 MB |
+|                               |                                <sub>`analytics.fact_orders USING btree (customer_id)`</sub> |
+| `fact_orders_date_key_idx`    |                                                                                       77 MB |
+|                               | <sub>`analytics.fact_orders USING btree (date_key) INCLUDE (revenue, cost, quantity)`</sub> |
+| `fact_orders_ordered_at_idx`  |                                                                                       43 MB |
+|                               |                            <sub>`analytics.fact_orders USING btree (ordered_at DESC)`</sub> |
+| `fact_orders_product_id_idx`  |                                                                                       60 MB |
+|                               |     <sub>`analytics.fact_orders USING btree (product_id) INCLUDE (revenue, quantity)`</sub> |
+| `fact_orders_store_id_idx`    |                                                                                       60 MB |
+|                               |                 <sub>`analytics.fact_orders USING btree (store_id) INCLUDE (revenue)`</sub> |
+| **Total (excl. primary key)** |                                                                                  **254 MB** |
 
 Heap is 206 MB. Every insert into `fact_orders` now maintains
 five more B-trees, which is why the seed script drops them — bulk-loading two
@@ -206,29 +206,29 @@ afterwards.
 
 ## Environment
 
-| | |
-| --- | --- |
-| CPU | AMD Ryzen 7 4800HS with Radeon Graphics (16 logical cores) |
-| Memory | 15 GB |
-| Host OS | win32 10.0.28120 |
-| Node.js | v24.14.1 |
-| PostgreSQL | PostgreSQL 17.11 |
-| Redis | connected |
-| Fact table | 2,000,025 rows, 206 MB heap |
+|            |                                                            |
+| ---------- | ---------------------------------------------------------- |
+| CPU        | AMD Ryzen 7 4800HS with Radeon Graphics (16 logical cores) |
+| Memory     | 15 GB                                                      |
+| Host OS    | win32 10.0.28120                                           |
+| Node.js    | v24.14.1                                                   |
+| PostgreSQL | PostgreSQL 17.11                                           |
+| Redis      | connected                                                  |
+| Fact table | 2,000,025 rows, 206 MB heap                                |
 
 Postgres and Redis run in Docker Desktop containers, so the database does not
 have the host's full resources. Postgres settings, pinned in
 [`docker-compose.yml`](docker-compose.yml) so this is reproducible:
 
-| Setting | Value |
-| ------- | ----- |
-| `effective_cache_size` | 196608 8kB |
-| `jit` | off |
-| `maintenance_work_mem` | 262144 kB |
-| `max_parallel_workers_per_gather` | 2 |
-| `random_page_cost` | 1.1 |
-| `shared_buffers` | 65536 8kB |
-| `work_mem` | 32768 kB |
+| Setting                           | Value      |
+| --------------------------------- | ---------- |
+| `effective_cache_size`            | 196608 8kB |
+| `jit`                             | off        |
+| `maintenance_work_mem`            | 262144 kB  |
+| `max_parallel_workers_per_gather` | 2          |
+| `random_page_cost`                | 1.1        |
+| `shared_buffers`                  | 65536 8kB  |
+| `work_mem`                        | 32768 kB   |
 
 `jit` is off deliberately: JIT compilation adds tens of milliseconds of
 nondeterministic overhead at this scale, and the point is to measure the effect

@@ -95,9 +95,12 @@ export function WidgetCard({ widget, dashboardId, sortable = true }: WidgetCardP
           {widget.title}
         </h3>
 
-        <div className="widget__tools">
-          {data && <CacheBadge meta={data.meta} />}
+        {/* A sibling of the tools rather than one of them, so a narrow card can
+            drop it to its own row instead of eating the title. See the
+            container query in styles.css. */}
+        {data && <CacheBadge meta={data.meta} />}
 
+        <div className="widget__tools">
           {/* Icon buttons, not labelled ones. Three words of chrome in the
               header squeezed the title out of a 3-column card entirely - it
               rendered as "T." - so the labels moved into tooltips and

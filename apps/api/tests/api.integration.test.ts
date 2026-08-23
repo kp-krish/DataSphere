@@ -24,6 +24,17 @@ let closeResources: () => Promise<void>;
 /** Dashboards created during the run, torn down at the end. */
 const createdDashboards: string[] = [];
 
+/**
+ * How many rows the fact table actually holds, read once at startup.
+ *
+ * Not hardcoded, because the fixture size is a property of the environment and
+ * not of anything under test: locally SEED_FACT_ROWS is two million, in CI it
+ * is a tenth of that. It also makes the injection test stronger - asserting
+ * the count is unchanged catches a destructive payload at any dataset size,
+ * where a literal only catches it at one.
+ */
+let factRows: number;
+
 async function createDashboard(name = 'Test dashboard'): Promise<string> {
   const response = await request(app).post('/api/dashboards').send({ name }).expect(201);
   createdDashboards.push(response.body.id);
@@ -51,6 +62,23 @@ beforeAll(async () => {
   closeResources = async () => {
     await Promise.allSettled([closePool(), closeCache()]);
   };
+
+  // Start from a cold cache. Redis outlives the test process, so a second
+  // `npm test` inside the TTL would otherwise replay cached results and fail
+  // the assertions that check Postgres was genuinely consulted.
+  await request(app).delete('/api/cache');
+
+  const { body } = await request(app)
+    .post('/api/query')
+    .send({
+      spec: {
+        dataset: 'orders',
+        dimensions: [],
+        measures: [{ table: 'fact_orders', column: 'order_id', fn: 'COUNT', alias: 'n' }],
+      },
+    })
+    .expect(200);
+  factRows = body.rows[0].n;
 });
 
 afterAll(async () => {
@@ -120,7 +148,7 @@ describeWithDb('POST /api/query', () => {
     expect(typeof row.orders).toBe('number');
     // AVG returns numeric with 16 decimal places; it must still arrive usable.
     expect(typeof row.avg_qty).toBe('number');
-    expect(row.orders).toBe(2_000_000);
+    expect(row.orders).toBe(factRows);
   });
 
   it('omits the SQL unless it is asked for', async () => {
@@ -244,7 +272,7 @@ describeWithDb('POST /api/query', () => {
         },
       })
       .expect(200);
-    expect(check.body.rows[0].n).toBe(2_000_000);
+    expect(check.body.rows[0].n).toBe(factRows);
   });
 });
 

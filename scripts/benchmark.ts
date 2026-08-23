@@ -309,6 +309,110 @@ async function captureEnvironment(client: Client): Promise<Environment> {
 /* -------------------------------------------------------------------------- */
 /* Report                                                                     */
 /* -------------------------------------------------------------------------- */
+/* Markdown table alignment                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pad every markdown table in the report so its columns line up.
+ *
+ * Done as a post-pass over the finished document rather than inside each
+ * template, because the tables are assembled in a dozen places - headers in
+ * the literal, rows in helper functions - and only the finished text knows how
+ * wide a column ended up.
+ *
+ * This is not cosmetic. `npm run format:check` runs in CI, and Prettier
+ * formats markdown; without this, every benchmark run would leave the repo
+ * failing its own format gate until someone hand-ran Prettier over generated
+ * output. Emitting what Prettier would emit keeps the generator and the gate
+ * from fighting.
+ */
+function alignTables(markdown: string): string {
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const delimiter = lines[i + 1];
+    // A table is a header row followed by a delimiter row. Detecting on the
+    // delimiter avoids mistaking a prose line containing a pipe for a table.
+    if (!isRow(lines[i]) || delimiter === undefined || !isDelimiter(delimiter)) {
+      out.push(lines[i]!);
+      continue;
+    }
+
+    let end = i + 2;
+    while (end < lines.length && isRow(lines[end])) end += 1;
+
+    const block = lines.slice(i, end);
+    out.push(...formatTable(block));
+    i = end - 1;
+  }
+
+  return out.join('\n');
+}
+
+const isRow = (line: string | undefined): boolean =>
+  line !== undefined && /^\s*\|.*\|\s*$/.test(line);
+
+const isDelimiter = (line: string): boolean =>
+  isRow(line) && /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(line);
+
+/** Split `| a | b |` into its cells, dropping the outer delimiters. */
+function cells(line: string): string[] {
+  return line
+    .trim()
+    .slice(1, -1)
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+/**
+ * Display width. Counts code points, not UTF-16 units, so the minus sign and
+ * multiplication sign this report uses (U+2212, U+00D7) each count as one
+ * column rather than being mismeasured.
+ */
+const width = (text: string): number => [...text].length;
+
+function formatTable(block: string[]): string[] {
+  const rows = block.map(cells);
+  const alignments = rows[1]!.map((cell): 'left' | 'right' | 'center' => {
+    const left = cell.startsWith(':');
+    const right = cell.endsWith(':');
+    if (left && right) return 'center';
+    return right ? 'right' : 'left';
+  });
+
+  const columns = Math.max(...rows.map((row) => row.length));
+  const widths = Array.from({ length: columns }, (_, column) =>
+    // Three is the narrowest a delimiter can be written and still read as one.
+    Math.max(3, ...rows.map((row, index) => (index === 1 ? 0 : width(row[column] ?? '')))),
+  );
+
+  return rows.map((row, index) => {
+    const rendered = Array.from({ length: columns }, (_, column) => {
+      const target = widths[column]!;
+      if (index === 1) {
+        const dashes = '-'.repeat(
+          target - (alignments[column] === 'center' ? 2 : alignments[column] === 'right' ? 1 : 0),
+        );
+        if (alignments[column] === 'center') return `:${dashes}:`;
+        return alignments[column] === 'right' ? `${dashes}:` : dashes;
+      }
+
+      const cell = row[column] ?? '';
+      const padding = ' '.repeat(target - width(cell));
+      if (alignments[column] === 'right') return `${padding}${cell}`;
+      if (alignments[column] === 'center') {
+        const left = Math.floor(padding.length / 2);
+        return `${' '.repeat(left)}${cell}${' '.repeat(padding.length - left)}`;
+      }
+      return `${cell}${padding}`;
+    });
+
+    return `| ${rendered.join(' | ')} |`;
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 
 function change(baseline: number, value: number): string {
   if (baseline <= 0) return '—';
@@ -420,7 +524,7 @@ function buildReport(
     .map(([name, value]) => `| \`${name}\` | ${value} |`)
     .join('\n');
 
-  return `# Benchmarks
+  return alignTables(`# Benchmarks
 
 Measured, not estimated. Every number below was produced by \`npm run benchmark\`,
 which runs the suite in
@@ -442,7 +546,7 @@ Median across the ten-query suite, measured end to end over HTTP:
 ${summaryRows}
 
 **That "index only" row understates what the indexes do.** The suite is
-deliberately weighted towards whole-table aggregation, so the *median* query in
+deliberately weighted towards whole-table aggregation, so the _median_ query in
 it is one indexes barely touch — while the best-served query in the same suite
 improves ${bestSpeedup}. A single median cannot represent a workload that
 bimodal, which is why this report leads with the per-query split rather than an
@@ -517,7 +621,7 @@ touched.
 **2. Reading narrower rows.** This is the case the obvious reasoning gets
 wrong. \`COUNT(DISTINCT customer_id)\` must visit all two million rows, so by
 the "a full scan cannot be helped" rule an index should be useless here. It is
-not: the query needs exactly one 4-byte column, and the index *is* a narrow
+not: the query needs exactly one 4-byte column, and the index _is_ a narrow
 copy of that column, so Postgres scans it instead of the heap.
 
 \`\`\`
@@ -531,7 +635,7 @@ Aggregate
 the bytes.
 
 There is a satisfying detail here. \`fact_orders_customer_id_idx\` is the
-*smallest* index on the table despite indexing the column with the *most*
+_smallest_ index on the table despite indexing the column with the _most_
 distinct values, because it is the only one without \`INCLUDE\` columns and so
 the only one B-tree deduplication can compress. The same decision that made it
 cheap to store is what makes it fast to scan.
@@ -555,7 +659,7 @@ whole-table aggregates that indexing cannot touch.
 Notice that "index + cache" and "cache only" are almost identical. That is
 expected, and it is not evidence the indexes are redundant: **on a cache hit
 the index cannot matter, because the database is never consulted.** What the
-index determines is how expensive a cache *miss* is — and misses are not rare.
+index determines is how expensive a cache _miss_ is — and misses are not rare.
 Every entry expires on its TTL, and every write to the fact table invalidates
 the dataset outright. The cache sets the best case; the index sets the worst
 one, which is the number a user actually feels after their data changes.
@@ -628,7 +732,7 @@ of indexes and caching rather than the JIT's compile time.
 - The dataset is synthetic but deliberately skewed (power-law popularity,
   seasonality). Uniformly random data would make every filter equally selective
   and would overstate the indexing result.
-`;
+`);
 }
 
 /* -------------------------------------------------------------------------- */

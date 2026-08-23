@@ -1,0 +1,225 @@
+# DataSphere CI
+#
+# Three jobs, deliberately split so a red build says *what* broke:
+#
+#   quality  - lint, formatting, types, and a production build. No services.
+#   test     - the full Vitest suite against a real Postgres and Redis.
+#   stack    - `docker compose up` on a clean machine, then smoke the API.
+#
+# `test` runs against real services rather than mocks because that is the only
+# way the interesting half of the suite runs at all: the integration tests skip
+# themselves when DATABASE_URL is absent, so a CI job without a database would
+# report a confident green while silently testing nothing.
+#
+# `stack` exists because the README promises that `docker compose up` on a
+# clean machine yields a working, seeded application. That promise is worth
+# exactly as much as the last time someone checked it.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static quality gates
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Lint, types, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Before the checks, not after: packages/core emits the declarations that
+      # apps/api and apps/web typecheck against, and this also proves the Vite
+      # production build compiles.
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      # Prettier is checked, never auto-applied. A formatting fix belongs in the
+      # commit that caused it, not in a bot commit landing on someone's branch.
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Tests, against real Postgres and Redis
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: datasphere
+          POSTGRES_USER: datasphere
+          POSTGRES_PASSWORD: datasphere_ci_pw
+        ports:
+          - 5432:5432
+        # Steps do not start until this reports healthy, so nothing here has to
+        # sleep-and-hope before connecting.
+        options: >-
+          --health-cmd "pg_isready -U datasphere -d datasphere"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgres://datasphere:datasphere_ci_pw@localhost:5432/datasphere
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # apps/api imports @datasphere/core from its build output.
+      - name: Build core
+        run: npm run build -w @datasphere/core
+
+      - name: Migrate
+        run: npm run migrate
+
+      # A tenth of the local dataset. Small enough to seed in seconds, large
+      # enough that the seasonality and power-law distributions the integration
+      # tests assert on still hold - the generator is deterministic, so this is
+      # the same data on every run.
+      - name: Seed
+        env:
+          SEED_FACT_ROWS: '200000'
+        run: npm run seed
+
+      - name: Test
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # The compose stack, end to end
+  # ---------------------------------------------------------------------------
+  stack:
+    name: Compose stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exactly the two commands the README's quick start tells a newcomer to
+      # run. If this job needs a third one, the README is wrong.
+      - name: Configure
+        run: cp .env.example .env
+
+      # 50k rows rather than 2M: this job checks that the images build and the
+      # boot order holds, not how fast Postgres ingests. Compose enforces the
+      # ordering through healthchecks and service_completed_successfully, so
+      # `up -d` returns only once init has exited cleanly and the API is up.
+      - name: Start
+        env:
+          SEED_FACT_ROWS: '50000'
+        run: docker compose up --build --detach
+
+      # Belt and braces on top of the compose healthcheck: it is the readiness
+      # probe, which checks Postgres and Redis, that has to pass before the
+      # smoke test below means anything.
+      - name: Wait for readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/ready > /dev/null; then
+              echo "Ready after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API never became ready."
+          exit 1
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+
+          echo "--- catalog is introspected ---"
+          curl -fsS http://localhost:4000/api/catalog |
+            jq -e '.datasets[0].name == "orders"' > /dev/null
+
+          body='{"spec":{"dataset":"orders","dimensions":[{"table":"dim_product","column":"category","alias":"category"}],"measures":[{"table":"fact_orders","column":"revenue","fn":"SUM","alias":"revenue"}]}}'
+
+          echo "--- a query compiles, runs and returns rows ---"
+          first=$(curl -fsS -X POST http://localhost:4000/api/query -H 'content-type: application/json' -d "$body")
+          echo "$first" | jq -e '.rows | length > 0' > /dev/null
+
+          echo "--- the second identical query is served from cache ---"
+          second=$(curl -fsS -X POST http://localhost:4000/api/query -H 'content-type: application/json' -d "$body")
+          echo "$second" | jq -e '.meta.cache == "hit"' > /dev/null
+
+          echo "--- a column outside the catalog is rejected, not executed ---"
+          injection='{"spec":{"dataset":"orders","dimensions":[],"measures":[{"table":"fact_orders","column":"revenue) FROM app.dashboards --","fn":"SUM","alias":"x"}]}}'
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:4000/api/query -H 'content-type: application/json' -d "$injection")
+          test "$status" = "400" || { echo "Expected 400, got $status"; exit 1; }
+
+          echo "--- and the fact table is still there afterwards ---"
+          curl -fsS -X POST http://localhost:4000/api/query -H 'content-type: application/json' -d "$body" |
+            jq -e '.rows | length > 0' > /dev/null
+
+          echo "--- the web container serves the built app ---"
+          # Buffered into a variable rather than piped straight into grep: grep
+          # -q exits on its first match, and under pipefail the SIGPIPE that
+          # sends back to curl would fail the step for the wrong reason.
+          html=$(curl -fsS http://localhost:5173/)
+          echo "$html" | grep -q 'id="root"'
+
+          echo "All smoke checks passed."
+
+      # Only on failure, and only the tail: a green run does not need several
+      # hundred lines of request logging attached to it.
+      - name: Logs
+        if: failure()
+        run: docker compose logs --tail 100
+
+      - name: Stop
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -1,13 +1,15 @@
 # DataSphere
 
+[![CI](https://github.com/kp-krish/DataSphere/actions/workflows/ci.yml/badge.svg)](https://github.com/kp-krish/DataSphere/actions/workflows/ci.yml)
+
 A cloud data visualization platform. Users compose analytical queries through a
 UI — no SQL — and DataSphere compiles that JSON spec into parameterised SQL,
 runs it against a 2-million-row PostgreSQL star schema, caches the result in
 Redis, and renders it as live dashboard widgets.
 
-> **Status: phases 1–6 of 7 complete.** The stack runs end to end, and the
-> performance work is measured rather than asserted — see
-> [BENCHMARKS.md](BENCHMARKS.md). CI and final docs remain.
+> **Status: complete.** The stack runs end to end, CI builds the images and
+> smoke-tests the whole compose stack on every push, and the performance work
+> is measured rather than asserted — see [BENCHMARKS.md](BENCHMARKS.md).
 
 ---
 
@@ -108,13 +110,18 @@ npm run dev:web                       # http://localhost:5173
 
 A classic Kimball star schema modelling e-commerce order lines.
 
-| Table          | Rows      | On disk |
-| -------------- | --------- | ------- |
-| `fact_orders`  | 2,000,000 | 249 MB  |
-| `dim_customer` | 50,000    | 7.5 MB  |
-| `dim_product`  | 5,000     | 1.1 MB  |
-| `dim_date`     | 1,826     | 288 kB  |
-| `dim_store`    | 200       | 72 kB   |
+| Table          | Rows      |   Heap | Indexes |
+| -------------- | --------- | -----: | ------: |
+| `fact_orders`  | 2,000,000 | 206 MB |  297 MB |
+| `dim_customer` | 50,000    | 6.2 MB |  1.1 MB |
+| `dim_product`  | 5,000     | 768 kB |  344 kB |
+| `dim_date`     | 1,826     | 144 kB |  112 kB |
+| `dim_store`    | 200       |  24 kB |   16 kB |
+
+The indexes on `fact_orders` outweigh the data they index. That is a real cost,
+not an oversight — the reasoning for each one, and for the columns deliberately
+left unindexed, is in
+[the index migration](apps/api/migrations/20260823090000000_analytics_indexes.sql).
 
 The generator is deliberately not uniform, because uniformly random data makes
 every filter equally selective and produces benchmark numbers that do not
@@ -184,6 +191,162 @@ pretending the cache was consulted.
 
 ---
 
+## API
+
+JSON over HTTP, no authentication — this is a single-tenant demonstration
+system. Every route is under `/api`, except the two probes, which are also
+mounted at the root because container healthchecks hit the API port directly.
+
+### Catalog
+
+The catalog **is** the allowlist. A table or column absent from it cannot
+appear in a compiled query, which is the mechanism the whole security argument
+rests on.
+
+| Method | Path                   | Purpose                                                  |
+| ------ | ---------------------- | -------------------------------------------------------- |
+| `GET`  | `/api/catalog`         | Datasets, tables, columns, types and the join graph      |
+| `POST` | `/api/catalog/refresh` | Re-introspect immediately instead of waiting for the TTL |
+
+### Query
+
+| Method | Path                 | Purpose                               |
+| ------ | -------------------- | ------------------------------------- |
+| `POST` | `/api/query`         | Compile a spec, run it, return rows   |
+| `POST` | `/api/query/compile` | Compile only — no database round trip |
+
+`POST /api/query` takes `{ spec, noCache?, includeSql? }`:
+
+```bash
+curl -X POST http://localhost:4000/api/query \
+  -H 'content-type: application/json' \
+  -d '{"spec":{
+        "dataset":"orders",
+        "dimensions":[{"table":"dim_product","column":"category","alias":"category"}],
+        "measures":[{"table":"fact_orders","column":"revenue","fn":"SUM","alias":"revenue"}],
+        "sort":[{"alias":"revenue","direction":"desc"}]
+      }}'
+```
+
+```jsonc
+{
+  "columns": ["category", "revenue"],
+  "rows": [{ "category": "Technology", "revenue": 637081797.57 }],
+  "meta": {
+    "rowCount": 4,
+    "executionMs": 417.48, // 0 on a cache hit — Postgres was never consulted
+    "totalMs": 418.45,
+    "cache": "bypass", // hit | miss | bypass | disabled
+    "cacheKey": "ds:q:2b91fc5f7499662ae5ed5423c98e4e43",
+    "generation": 0,
+    "appliedLimit": 1000, // the server's clamp, not necessarily what was asked
+  },
+}
+```
+
+A **spec** names a dataset and any of `dimensions`, `measures`, `filters`,
+`sort`, `limit` and `offset`. Measures take `SUM`, `AVG`, `COUNT`,
+`COUNT_DISTINCT`, `MIN` or `MAX`; date dimensions take an optional `grain`
+(`day`, `week`, `month`, `quarter`, `year`); filter operators are constrained
+by the column's type, so `contains` is offered on text and `between` on numbers
+and dates but never the reverse. Anything else is a 400 before Postgres is
+touched.
+
+`POST /api/query/compile` returns the SQL and its bound values **separately**,
+which is what the query builder renders live:
+
+```jsonc
+{
+  "sql": "SELECT\n  date_trunc('month', \"dim_date\".\"full_date\")::date AS \"month\",\n  SUM(\"fact_orders\".\"revenue\") AS \"revenue\"\n…\n  WHERE \"fact_orders\".\"order_status\" = $1\n…\n  LIMIT $2",
+  "values": ["completed", 12],
+  "columns": ["month", "revenue"],
+  "appliedLimit": 12,
+  "cacheKey": "ds:q:d3f62511d883bb414b4ebbcf59c777a7",
+}
+```
+
+Note `$1` and `$2`. The row limit is a bind parameter too — there is no path by
+which a client-supplied value reaches the SQL text.
+
+### Dashboards and widgets
+
+| Method   | Path                                | Purpose                                    |
+| -------- | ----------------------------------- | ------------------------------------------ |
+| `GET`    | `/api/dashboards`                   | List                                       |
+| `POST`   | `/api/dashboards`                   | Create                                     |
+| `GET`    | `/api/dashboards/:id`               | One dashboard with its widgets             |
+| `PATCH`  | `/api/dashboards/:id`               | Rename or re-describe                      |
+| `DELETE` | `/api/dashboards/:id`               | Delete, cascading to its widgets           |
+| `GET`    | `/api/dashboards/:id/widgets`       | Widgets in display order                   |
+| `POST`   | `/api/dashboards/:id/widgets`       | Add a widget                               |
+| `PUT`    | `/api/dashboards/:id/widgets/order` | Reorder, in one transaction                |
+| `GET`    | `/api/widgets/:id`                  | One widget                                 |
+| `PATCH`  | `/api/widgets/:id`                  | Edit title, type, config or query spec     |
+| `DELETE` | `/api/widgets/:id`                  | Delete                                     |
+| `GET`    | `/api/widgets/:id/data`             | Run the widget's stored spec; `?noCache=1` |
+
+A widget stores its own query spec, and it is **compiled on write**: a `POST`
+or `PATCH` carrying a spec that does not compile is rejected there and then,
+so a dashboard cannot be saved into a state where a card fails to load.
+
+### Cache
+
+| Method   | Path                    | Purpose                                               |
+| -------- | ----------------------- | ----------------------------------------------------- |
+| `GET`    | `/api/cache/stats`      | Hits, misses, hit rate, entry count, memory, TTL      |
+| `POST`   | `/api/cache/invalidate` | Bump a dataset's generation — `{ dataset?, reason? }` |
+| `DELETE` | `/api/cache`            | Drop every cached result outright                     |
+
+Invalidation and deletion are different operations, deliberately. Invalidating
+is one `INCR` and makes entries unreachable; deleting reclaims the memory. The
+benchmark needs the second, because "cold cache" has to mean cold in Redis
+rather than merely unreachable.
+
+### Events and the demo hook
+
+| Method | Path               | Purpose                                                     |
+| ------ | ------------------ | ----------------------------------------------------------- |
+| `GET`  | `/api/events`      | Server-Sent Events: invalidations, pushed as they happen    |
+| `POST` | `/api/demo/orders` | Append synthetic order lines and invalidate, in one request |
+
+`POST /api/demo/orders` exists so the live path is demonstrable rather than
+described: it writes rows, invalidates the dataset, and every connected browser
+refetches without a reload.
+
+### Health
+
+| Method | Path      | Purpose                                                             |
+| ------ | --------- | ------------------------------------------------------------------- |
+| `GET`  | `/health` | Liveness. The process is up. Never touches a dependency             |
+| `GET`  | `/ready`  | Readiness. `503` if Postgres is unreachable, `degraded` if Redis is |
+
+Split because they answer different questions: an unready API should stop
+receiving traffic, but restarting it will not help. Redis being down is a
+degradation and not an outage — queries still run, they simply miss the cache
+every time — so it reports `degraded` at `200` rather than failing readiness
+and taking the service out of rotation over a cache.
+
+### Errors
+
+One envelope for every failure, including 404s, so a client needs one parser:
+
+```jsonc
+{
+  "error": {
+    "code": "unknown_column",
+    "message": "Unknown column \"revenue) FROM app.dashboards --\" on table \"fact_orders\"",
+    "details": { "table": "fact_orders", "column": "revenue) FROM app.dashboards --" },
+  },
+}
+```
+
+`400` for a spec that does not validate or names something outside the catalog,
+`404` for a missing dashboard or widget, `413` for an oversized body, `503`
+when a dependency is down, `500` only for genuine bugs — and never with
+internals in the message.
+
+---
+
 ## Frontend
 
 React + Vite + TypeScript, Recharts for charts, TanStack Query for server
@@ -206,6 +369,20 @@ candidate orderings and keeping only ones that pass. Pie slices are
 direct-labelled because the first four slots land in the band where colour
 needs a second channel.
 
+**The bundle is split by rate of change, not by route.** Every route needs the
+charting library, so route-level splitting would buy nothing; splitting by how
+often a dependency changes buys real cache reuse, because a redeploy then
+invalidates only the small chunk:
+
+| Chunk                |    Raw |   gzip |
+| -------------------- | -----: | -----: |
+| Application          | 118 kB |  36 kB |
+| React and the router | 217 kB |  70 kB |
+| Recharts and d3      | 402 kB | 114 kB |
+
+Nothing was removed — the total is what it was. What changed is that reworking
+a label ships 36 kB instead of 220 kB.
+
 Other rules the UI holds to:
 
 - **Text never wears a data colour.** A coloured swatch beside a label carries
@@ -216,8 +393,62 @@ Other rules the UI holds to:
   a skeleton and jumping the layout.
 - **Reordering works from the keyboard** (dnd-kit's keyboard sensor), and is
   optimistic with a rollback if the server rejects it.
+- **Widget headers lay themselves out against the card, not the viewport.** A
+  container query, because four KPI cards on a wide screen are each narrower
+  than one chart card on a phone and a media query cannot tell them apart.
+  Below the threshold the cache badge drops to its own row rather than
+  abbreviating "Average order value" to "Average …".
 - Bars cap at 24px, lines are 2px, markers carry a 2px surface ring, and
   gridlines are solid hairlines one step off the surface.
+
+---
+
+## Tests and CI
+
+363 tests across seven files.
+
+| Where           | Tests | Needs a database                                        |
+| --------------- | ----: | ------------------------------------------------------- |
+| `packages/core` |   293 | no — the compiler is pure, so it is fully unit-testable |
+| `apps/api`      |    70 | 62 of them, yes                                         |
+
+**235 of those 293 are injection attempts**, and every one of them asserts a
+rejection: quote-escaping and identifier-closing payloads, `--` comments,
+stacked statements, `UNION SELECT`, string concatenation into a subquery,
+`pg_read_file`, prototype-chain names like `constructor` and `__proto__`,
+`pg_catalog` and `information_schema` tables named directly, and hostile
+values in every position a value can appear. The suite has been mutation-tested — the
+allowlist check was deliberately broken to confirm the tests go red, because a
+security test that cannot fail is decoration.
+
+The integration tests skip themselves when `DATABASE_URL` is absent, so
+`npm test` on a fresh clone still runs and still means something. CI always
+supplies one, which is what keeps that convenience from quietly becoming a
+coverage hole.
+
+```bash
+npm test            # everything
+npm run lint        # eslint
+npm run format:check
+npm run typecheck   # all four workspaces
+```
+
+CI runs on every push and pull request, in three jobs so a red build says which
+layer broke:
+
+| Job                    | What it proves                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| **Lint, types, build** | ESLint, Prettier, `tsc` across all four workspaces, and a real Vite production build            |
+| **Tests**              | All 363, against a real PostgreSQL 17 and Redis 7 rather than mocks                             |
+| **Compose stack**      | `docker compose up --build` from a clean checkout, then a smoke test through the running system |
+
+The third job is the one worth having. It runs the two commands the quick start
+gives a newcomer, waits for the readiness probe, and then walks the actual
+path a user takes: introspect the catalog, run a query, run it again and assert
+it came from cache, post a hostile column name and assert a `400`, re-run the
+first query to prove the fact table is still there, and fetch the built
+frontend from nginx. A README promising `docker compose up` works is worth
+exactly as much as the last time someone checked.
 
 ---
 
@@ -228,8 +459,14 @@ packages/core     Shared contracts + the query compiler. Zero runtime deps,
                   so it is exhaustively unit-testable without a database.
 apps/api          Express + TypeScript REST API, and the migrations.
 apps/web          React + Vite client.
-scripts           Seeding and the benchmark harness.
+scripts           Seeding, screenshots and the benchmark harness.
+.github/workflows CI.
 ```
+
+An npm workspaces monorepo with TypeScript project references. The web client
+imports the same `@datasphere/core` the API compiles with, so a query spec the
+UI builds and a spec the server accepts cannot drift apart — the type error
+appears at build time rather than as a 400 at runtime.
 
 ---
 
@@ -251,7 +488,9 @@ its values are throwaway local-container credentials.
 
 ---
 
-## Roadmap
+## Build log
+
+Built in seven phases, each reviewed before the next began.
 
 - [x] **1** — Scaffold, compose stack, migrations, 2M-row seed
 - [x] **2** — Schema catalog + query compiler + injection tests
@@ -259,7 +498,7 @@ its values are throwaway local-container credentials.
 - [x] **4** — Redis caching, invalidation, hit/miss reporting
 - [x] **5** — Query builder UI, dashboard grid, all widget types
 - [x] **6** — Indexes, benchmark harness, `BENCHMARKS.md`
-- [ ] **7** — CI, docs, polish
+- [x] **7** — CI, API docs, polish
 
 ## Screenshots
 
@@ -297,8 +536,9 @@ Median across the suite, end to end over HTTP against 2M rows:
 | **Index + cache**  | **3.0 ms** | **3.9 ms** |
 
 **The median hides the interesting half.** The suite is deliberately weighted
-towards whole-table aggregation, which no index can accelerate — so the "index
-only" median barely moves while individual queries improve up to 8.4×:
+towards whole-table aggregation, where most queries have little an index can
+do for them — so the "index only" median barely moves while individual queries
+improve up to 8.4×:
 
 | Query                             | No index | With index | Change |
 | --------------------------------- | -------: | ---------: | ------ |
@@ -308,9 +548,10 @@ only" median barely moves while individual queries improve up to 8.4×:
 | Revenue by category for one store |  66.9 ms |    18.3 ms | −73%   |
 | Revenue by segment and region     | 457.9 ms |   460.8 ms | +1%    |
 
-The last row is not a failure — it is the honest shape of the result. A query
-that must read `revenue` for every row cannot be served from an index, and a
-parallel sequential scan is already its optimal plan.
+The last row is not a failure — it is the honest shape of the result. That
+query needs `revenue` for every one of two million rows, so a parallel
+sequential scan over the heap is already its best plan and there is nothing
+for an index to improve.
 
 Two findings worth the read:
 

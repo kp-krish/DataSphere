@@ -7,9 +7,9 @@
  * every one of them.
  *
  * These tests close that gap. They introspect the real schema, compile a
- * representative set of dashboard queries, and execute them against the
- * seeded 2M-row database. A syntax error, a wrong join, or a parameter type
- * Postgres cannot infer fails here and nowhere else.
+ * representative set of dashboard queries, and execute them against the real
+ * seeded database. A syntax error, a wrong join, or a parameter type Postgres
+ * cannot infer fails here and nowhere else.
  *
  * Requires a migrated, seeded database. `docker compose up -d postgres` plus
  * `npm run migrate && npm run seed` is enough; CI provides one as a service.
@@ -34,6 +34,13 @@ let client: Client;
 let catalog: Catalog;
 
 /**
+ * The seeded row count, read rather than assumed. SEED_FACT_ROWS is two
+ * million locally and a tenth of that in CI, and none of these tests is about
+ * how large the fixture is.
+ */
+let factRows: number;
+
+/**
  * Skipped rather than failed when no database is configured, so `npm test` on
  * a fresh clone is still useful. CI sets DATABASE_URL, so the coverage is not
  * optional where it counts.
@@ -51,6 +58,11 @@ beforeAll(async () => {
     return result.rows;
   };
   catalog = await introspectCatalog(run, { schema: 'analytics' });
+
+  const counted = await client.query<{ n: string }>(
+    'SELECT count(*)::text AS n FROM analytics.fact_orders',
+  );
+  factRows = Number(counted.rows[0]!.n);
 });
 
 afterAll(async () => {
@@ -153,7 +165,7 @@ describeWithDb('compiled SQL executes correctly', () => {
     });
 
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0]!.total)).toBe(2_000_000);
+    expect(Number(rows[0]!.total)).toBe(factRows);
   });
 
   it('buckets a date dimension by month and returns dates, not timestamps', async () => {
@@ -333,7 +345,7 @@ describeWithDb('compiled SQL executes correctly', () => {
     expect(Number(rows[0]!.n)).toBe(0);
 
     const survived = await client.query('SELECT count(*)::text AS n FROM analytics.fact_orders');
-    expect(Number(survived.rows[0].n)).toBe(2_000_000);
+    expect(Number(survived.rows[0].n)).toBe(factRows);
   });
 });
 
