@@ -38,8 +38,7 @@ describe('coerceNumericString', () => {
 describe('coerceRows', () => {
   // Only the two properties coerceRows reads; the rest of FieldDef is noise
   // for this test.
-  const field = (name: string, dataTypeID: number) =>
-    ({ name, dataTypeID }) as unknown as FieldDef;
+  const field = (name: string, dataTypeID: number) => ({ name, dataTypeID }) as unknown as FieldDef;
 
   it('converts only the columns Postgres typed as numeric or bigint', () => {
     const rows = [{ category: 'Technology', revenue: '1234.56', sku: '0012345', orders: '42' }];

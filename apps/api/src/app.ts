@@ -19,6 +19,9 @@ import { healthRouter } from './routes/health.js';
 import { catalogRouter } from './routes/catalog.js';
 import { queryRouter } from './routes/query.js';
 import { dashboardsRouter, widgetsRouter } from './routes/dashboards.js';
+import { cacheRouter } from './routes/cache.js';
+import { eventsRouter } from './routes/events.js';
+import { demoRouter } from './routes/demo.js';
 
 export function createApp(): Express {
   const app = express();
@@ -77,6 +80,9 @@ export function createApp(): Express {
   app.use('/api', queryRouter);
   app.use('/api', dashboardsRouter);
   app.use('/api', widgetsRouter);
+  app.use('/api', cacheRouter);
+  app.use('/api', eventsRouter);
+  app.use('/api', demoRouter);
 
   /* ---- fallbacks --------------------------------------------------------- */
 

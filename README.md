@@ -5,9 +5,9 @@ UI — no SQL — and DataSphere compiles that JSON spec into parameterised SQL,
 runs it against a 2-million-row PostgreSQL star schema, caches the result in
 Redis, and renders it as live dashboard widgets.
 
-> **Status: phase 1 of 7 complete.** The infrastructure, schema and data
-> generator are done and verified. The query engine, API, caching layer and
-> frontend are being built in sequence — see [Roadmap](#roadmap).
+> **Status: phases 1–4 of 7 complete.** The infrastructure, query engine, REST
+> API and caching layer are done and verified. The frontend, index/benchmark
+> work and CI remain — see [Roadmap](#roadmap).
 
 ---
 
@@ -135,6 +135,55 @@ the container, with foreign keys dropped for the load and restored afterwards.
 
 ---
 
+## Caching
+
+Query results are cached in Redis under a key derived from the _normalised_
+query spec, so two specs that mean the same thing share one entry — filters are
+ANDed, for instance, so their order is sorted away before hashing.
+
+Every response reports what the cache did, which is what makes the performance
+claim checkable rather than asserted:
+
+```jsonc
+"meta": {
+  "cache": "hit",          // hit | miss | bypass | disabled
+  "executionMs": 0,        // Postgres was not touched
+  "totalMs": 2.12,
+  "savedMs": 317.12,       // what this hit actually saved, measured
+  "cacheTtlRemaining": 287,
+  "generation": 13
+}
+```
+
+### Invalidation is O(1)
+
+Each dataset carries a generation counter, and the generation is folded into
+every cache key. Invalidating is a single `INCR`: every key written under the
+old generation becomes unreachable at once, because nothing will ever compute
+that key again. Orphans expire on their own TTL, or sooner under Redis's
+`allkeys-lru`. No `SCAN`, no per-table key sets to keep in step.
+
+Generations are held in process (they sit on the query hot path) and kept
+current three ways: read at startup and on every Redis reconnect, pushed over
+pub/sub the instant any instance invalidates, and re-read on a 30s timer as a
+backstop for messages missed during an outage. If all three fail the worst case
+is bounded — a cached result served until its own TTL expires, which is the
+staleness the TTL already permits.
+
+### Live updates
+
+The same pub/sub feed drives `GET /api/events`, a Server-Sent Events stream.
+When a dataset is invalidated, connected browsers are told immediately and
+refetch — rather than every widget polling on a timer for data that has not
+changed. `POST /api/demo/orders` appends synthetic order lines and invalidates
+in the same request, which makes the whole loop demonstrable.
+
+The cache is never load-bearing: every path through it degrades to "run the
+query" when Redis is unavailable, and the response says `disabled` rather than
+pretending the cache was consulted.
+
+---
+
 ## Repository layout
 
 ```
@@ -168,9 +217,9 @@ its values are throwaway local-container credentials.
 ## Roadmap
 
 - [x] **1** — Scaffold, compose stack, migrations, 2M-row seed
-- [ ] **2** — Schema catalog + query compiler + injection tests
-- [ ] **3** — REST API: catalog, query execution, dashboard/widget CRUD
-- [ ] **4** — Redis caching, invalidation, hit/miss reporting
+- [x] **2** — Schema catalog + query compiler + injection tests
+- [x] **3** — REST API: catalog, query execution, dashboard/widget CRUD
+- [x] **4** — Redis caching, invalidation, hit/miss reporting
 - [ ] **5** — Query builder UI, dashboard grid, all widget types
 - [ ] **6** — Indexes, benchmark harness, `BENCHMARKS.md`
 - [ ] **7** — CI, docs, polish

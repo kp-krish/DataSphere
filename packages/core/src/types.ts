@@ -183,6 +183,18 @@ export interface CompiledQuery {
   appliedLimit: number;
 }
 
+/**
+ * What the cache did for this request.
+ *
+ *   hit      - served from Redis; Postgres was not touched
+ *   miss     - not cached, so it ran and the result was stored
+ *   bypass   - the caller asked to skip the cache (manual refresh, benchmark)
+ *   disabled - caching is switched off, or Redis is unreachable
+ *
+ * `bypass` and `disabled` are kept distinct on purpose: one is a choice the
+ * client made, the other is a condition of the system, and conflating them
+ * would make a Redis outage look like normal traffic.
+ */
 export type CacheStatus = 'hit' | 'miss' | 'bypass' | 'disabled';
 
 export interface QueryResultMeta {
@@ -193,8 +205,23 @@ export interface QueryResultMeta {
   totalMs: number;
   cache: CacheStatus;
   cacheKey: string;
-  /** Seconds remaining on the cached entry, when known. */
+  /** Seconds remaining on the cached entry. Present on a hit. */
   cacheTtlRemaining?: number;
+  /** When the cached entry was written. Present on a hit. */
+  cachedAt?: string;
+  /**
+   * What the query cost in Postgres when it was originally run.
+   *
+   * Present on a hit, where `executionMs` is zero. The difference between the
+   * two is the time the cache actually saved on this request - which is the
+   * performance claim, reported per request rather than asserted in a README.
+   */
+  savedMs?: number;
+  /**
+   * The dataset generation this result belongs to. Bumped by invalidation;
+   * entries from an older generation can never be read back.
+   */
+  generation?: number;
   appliedLimit: number;
   /** Echoed back so the UI can show what actually ran. */
   sql?: string;

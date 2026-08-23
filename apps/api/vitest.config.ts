@@ -13,6 +13,11 @@ try {
   // supplies DATABASE_URL directly.
 }
 
+// pino writes a full request/response object per call at info level, which
+// buries test failures in thousands of lines. Tests that care about logging
+// can still opt in by exporting LOG_LEVEL before running.
+process.env.LOG_LEVEL = process.env.VITEST_LOG_LEVEL ?? 'silent';
+
 export default defineConfig({
   test: {
     name: 'api',

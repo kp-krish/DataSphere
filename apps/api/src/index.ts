@@ -14,6 +14,8 @@ import { env } from './config/env.js';
 import { logger } from './logger.js';
 import { closePool } from './db/pool.js';
 import { closeCache } from './cache/redis.js';
+import { getCatalog, warmCatalog } from './catalog/service.js';
+import { startInvalidationListener, stopInvalidationListener } from './cache/generations.js';
 
 const app = createApp();
 
@@ -22,6 +24,17 @@ const server = app.listen(env.API_PORT, () => {
     { port: env.API_PORT, env: env.NODE_ENV, cacheEnabled: env.CACHE_ENABLED },
     'DataSphere API listening',
   );
+
+  // Warm the catalog so the first real request is not the one paying for
+  // introspection, then start listening for cache invalidations. Neither is
+  // fatal on failure: the catalog retries on demand, and without the listener
+  // the periodic resync still converges.
+  void warmCatalog()
+    .then(() => getCatalog())
+    .then((catalog) => startInvalidationListener(catalog.datasets.map((d) => d.name)))
+    .catch((error: unknown) => {
+      logger.warn({ err: error }, 'Startup warm-up incomplete; continuing');
+    });
 });
 
 let shuttingDown = false;
@@ -45,6 +58,10 @@ async function shutdown(signal: string): Promise<void> {
   });
 
   await Promise.race([closed, timeout]);
+
+  // Stop the resync timer and drop SSE listeners before closing the
+  // connections they use.
+  stopInvalidationListener();
   await Promise.allSettled([closePool(), closeCache()]);
 
   logger.info('Shutdown complete');
